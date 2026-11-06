@@ -1,5 +1,7 @@
 # Stm32Link_Keil — STM32 Firmware
 
+[中文](README.zh-CN.md) | English
+
 Keil MDK project for the STM32F103C8T6 side of the
 [Stm32Link](https://github.com/qwaszxopklnmso/Stm32Link) project. It drives
 the link lamps, telemetry transmitter/receiver, buzzer and OLED, and speaks
