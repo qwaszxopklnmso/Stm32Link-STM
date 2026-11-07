@@ -73,7 +73,7 @@ static void Line_Parse(char *s, uint8_t len) {
 		uint8_t ch = (uint8_t)(s[1] - '1');
 		uint8_t v = (uint8_t)(s[3] == '1');
 		Led_Set(ch, v);
-		Send_State('L', (uint8_t)(ch + 1), Led_Get(ch));
+		// Output-only: no L report goes back to MC.
 		OLED_ShowLeds();
 	} else if (len == 3 && s[0] == 'T' && s[1] == ':' && Is01(s[2])) {
 		uint8_t v = (uint8_t)(s[2] == '1');
@@ -122,7 +122,7 @@ static void Line_Parse(char *s, uint8_t len) {
 	} else if (len == 1 && s[0] == 'P') {
 		Serial_SendString("OK\n");
 	} else if (len == 1 && s[0] == 'S') {
-		for (uint8_t i = 0; i < LED_NUM; i++) Send_State('L', (uint8_t)(i + 1), Led_Get(i));
+		// LEDs are output-only; report just the input level.
 		Send_State('B', 4, b4Level);
 	} else if (len >= 1 && s[0] == 'M' && (len == 1 || (len == 2 && (s[1] == '1' || s[1] == '2')))) {
 		Song_Start((len == 2 && s[1] == '2') ? 2 : 1);
@@ -158,11 +158,7 @@ void Protocol_OnKeys(uint8_t km) {
 	if (!km) return;
 	for (uint8_t i = 0; i < KEY_NUM; i++) {
 		if (!(km & (1u << i))) continue;
-		if (i == 0) {
-			// B1: LED1 only. No B event; one button, one job.
-			Led_Toggle(0);
-			Send_State('L', 1, Led_Get(0));
-		} else if (i == 1) {
+		if (i == 1) {
 			// B2: pulse receivers only.
 			Send_State('B', 2, 1);
 		} else if (i == 2) {
