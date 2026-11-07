@@ -7,7 +7,10 @@
 #include "Song.h"
 #include "OLED.h"
 
-#define LINE_BUF 32
+// A line is deliberately small: the MC side never sends more than ~24 chars,
+// and anything longer is dropped instead of being parsed as a truncated command.
+#define LINE_BUF 40
+
 static char lineBuf[LINE_BUF];
 static uint8_t lineLen = 0, lineOverflow = 0;
 static uint8_t b4State = 0;   // B4 latch: redstone broadcast switch, toggled by button
@@ -33,61 +36,96 @@ static void OLED_ShowLeds(void) {
 	OLED_ShowNum(4, 8, Led_TledGet(), 1);
 }
 
-static void Line_Parse(char *s) {
-	// show last command (up to 6 chars) on row 1
+// Parse a non-empty decimal field, clamping to max. Returns 0 when no digit
+// was consumed; advances *pp past the digits. This never reads past the
+// NUL-terminated line, and cannot overflow uint32_t with the 40-byte cap.
+static uint8_t Parse_U16(const char **pp, uint16_t max, uint16_t *out) {
+	const char *p = *pp;
+	uint32_t v = 0;
+	uint8_t digits = 0;
+	while (*p >= '0' && *p <= '9') {
+		if (v <= (uint32_t)max) v = v * 10u + (uint32_t)(*p - '0');
+		p++;
+		digits++;
+	}
+	if (!digits) return 0;
+	if (v > (uint32_t)max) v = (uint32_t)max;
+	*out = (uint16_t)v;
+	*pp = p;
+	return 1;
+}
+
+static uint8_t Is01(char c) {
+	return (uint8_t)(c == '0' || c == '1');
+}
+
+// Every command validates its exact shape before touching s[2]/s[3]. The old
+// chain read those bytes even for a one-character line, which is undefined
+// behaviour (the byte happened to be inside lineBuf, but was never checked).
+static void Line_Parse(char *s, uint8_t len) {
+	// show last command (up to 6 chars) on row 1 (validated below)
 	uint8_t sl = 0;
-	while (s[sl] && sl < 6) sl++;
+	while (sl < 6 && sl < len && s[sl]) sl++;
 	for (uint8_t i = 0; i < 6; i++) OLED_ShowChar(1, 10 + i, i < sl ? s[i] : ' ');
-	if (s[0] == 'L' && s[2] == ':' && s[1] >= '1' && s[1] <= '3') {
+
+	if (len == 4 && s[0] == 'L' && s[1] >= '1' && s[1] <= '3'
+			&& s[2] == ':' && Is01(s[3])) {
 		uint8_t ch = (uint8_t)(s[1] - '1');
-		uint8_t v = (s[3] == '1');
+		uint8_t v = (uint8_t)(s[3] == '1');
 		Led_Set(ch, v);
 		Send_State('L', (uint8_t)(ch + 1), Led_Get(ch));
 		OLED_ShowLeds();
-	} else if (s[0] == 'T' && s[1] == ':') {
-		uint8_t v = (s[2] == '1');
+	} else if (len == 3 && s[0] == 'T' && s[1] == ':' && Is01(s[2])) {
+		uint8_t v = (uint8_t)(s[2] == '1');
 		if (v && !Led_TledGet()) {
 			Buzz_Note(0, 1319, 60);   // V1 confirmation (works with only V1 connected)
 			Buzz_Beep();              // V4 piezo confirmation at its 4kHz resonance
 		}
 		Led_TledSet(v);
 		OLED_ShowLeds();
-	} else if (s[0] == 'N') {
+	} else if (len >= 3 && s[0] == 'N') {
 		uint8_t ch = 0;
-		char *p;
-		if (s[1] >= '1' && s[1] <= '4' && s[2] == ':') { ch = (uint8_t)(s[1] - '1'); p = s + 3; }
-		else if (s[1] == ':') { p = s + 2; }
-		else return;
+		const char *p;
+		if (len >= 4 && s[1] >= '1' && s[1] <= '4' && s[2] == ':') {
+			ch = (uint8_t)(s[1] - '1');
+			p = s + 3;
+		} else if (s[1] == ':') {
+			p = s + 2;
+		} else {
+			return;
+		}
 		uint16_t f = 0, m = 0;
-		while (*p >= '0' && *p <= '9') f = (uint16_t)(f * 10 + (*p++ - '0'));
-		if (*p == ',') { p++; while (*p >= '0' && *p <= '9') m = (uint16_t)(m * 10 + (*p++ - '0')); }
+		if (!Parse_U16(&p, 20000, &f)) return;
+		if (*p == ',') {
+			p++;
+			(void)Parse_U16(&p, 60000, &m);
+		}
 		if (m == 0) m = 100;
 		Buzz_Note(ch, f, m);
 		if (ch == 0 && f) Song_ShowNote(f, m);
-	} else if (s[0] == 'W') {                    // PCM clip on V1 pin (real audio)
+	} else if (len == 1 && s[0] == 'W') {        // PCM clip on V1 pin (real audio)
 		Buzz_PlayPcm(Pcm_Audio, Pcm_Len);
 		OLED_ShowString(3, 1, "PCM!         ");
-	} else if (s[0] == 'Y') {                    // buzzer trigger polarity
-		// Y<1-4>:<0/1>  per voice: 1 = 低电平触发, 0 = 高电平触发
-		// Y:<0/1>       all four voices
-		if (s[1] >= '1' && s[1] <= '4' && s[2] == ':') {
-			uint8_t ch = (uint8_t)(s[1] - '1');
-			uint8_t low = (s[3] == '1');
-			Buzz_SetTriggerLow(ch, low);
-			Send_State('Y', (uint8_t)(ch + 1), Buzz_GetTriggerLow(ch));
-		} else if (s[1] == ':') {
-			uint8_t low = (s[2] == '1');
-			for (uint8_t i = 0; i < BUZZ_VOICES; i++) Buzz_SetTriggerLow(i, low);
-			Serial_SendByte('Y'); Serial_SendByte(':');
-			Serial_SendNumber(low); Serial_SendByte('\n');
-		}
-	} else if (s[0] == 'P') {
+	} else if (len == 4 && s[0] == 'Y' && s[1] >= '1' && s[1] <= '4'
+			&& s[2] == ':' && Is01(s[3])) {
+		// Y<1-4>:<0/1>  per voice: 1 = low-level trigger, 0 = high-level trigger
+		uint8_t ch = (uint8_t)(s[1] - '1');
+		uint8_t low = (uint8_t)(s[3] == '1');
+		Buzz_SetTriggerLow(ch, low);
+		Send_State('Y', (uint8_t)(ch + 1), Buzz_GetTriggerLow(ch));
+	} else if (len == 3 && s[0] == 'Y' && s[1] == ':' && Is01(s[2])) {
+		// Y:<0/1>  all four voices
+		uint8_t low = (uint8_t)(s[2] == '1');
+		for (uint8_t i = 0; i < BUZZ_VOICES; i++) Buzz_SetTriggerLow(i, low);
+		Serial_SendByte('Y'); Serial_SendByte(':');
+		Serial_SendNumber(low); Serial_SendByte('\n');
+	} else if (len == 1 && s[0] == 'P') {
 		Serial_SendString("OK\n");
-	} else if (s[0] == 'S') {
+	} else if (len == 1 && s[0] == 'S') {
 		for (uint8_t i = 0; i < LED_NUM; i++) Send_State('L', (uint8_t)(i + 1), Led_Get(i));
 		Send_State('B', 4, b4State);
-	} else if (s[0] == 'M') {
-		Song_Start((s[1] == '2') ? 2 : 1);   // M/M1/M2 all start the single song (8-bit pipa)
+	} else if (len >= 1 && s[0] == 'M' && (len == 1 || (len == 2 && (s[1] == '1' || s[1] == '2')))) {
+		Song_Start((len == 2 && s[1] == '2') ? 2 : 1);
 	}
 }
 
@@ -104,7 +142,7 @@ void Protocol_Poll(void) {
 		if (c == '\n' || c == '\r') {
 			if (lineLen && !lineOverflow) {
 				lineBuf[lineLen] = '\0';
-				Line_Parse(lineBuf);
+				Line_Parse(lineBuf, lineLen);
 			}
 			lineLen = 0;
 			lineOverflow = 0;

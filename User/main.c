@@ -10,8 +10,8 @@
 
 // WithSTM32 - MC <-> STM32 serial link firmware
 // Buzzer voices: V1 PA0 (TIM2)  V2 PA8 (TIM1)  V3 PA6 (TIM3)  V4 PA5 (software)
-// Buzzer is low-level triggered by default (piezo); electromagnetic voices can
-// be switched to high-level trigger per voice (Buzz_SetTriggerLow / Y command).
+// Buzzer defaults: V1-V3 high-level trigger (NPN electromagnetic), V4 low-level
+// trigger (piezo). Each voice can be switched at runtime (Y command).
 // LED1-3: PA1/PA2/PA3   T-LED: PA4   Buttons B1-B4: PB12-PB15 (to GND)
 // USART1: PA9(TX)/PA10(RX) -> CH340, 115200 8N1
 // Wiring: STM32_Set.md   Line protocol: Protocol.h

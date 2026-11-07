@@ -3,8 +3,9 @@
 
 #include "stm32f10x.h"
 
-// Serial line protocol over USART1 (115200 8N1, lines end with '\n', 32-byte buffer).
+// Serial line protocol over USART1 (115200 8N1, lines end with '\n', 40-byte buffer).
 //   MC -> STM32 : "L<1-3>:<0|1>" set LED | "T:<0|1>" transmitter | "N<v>:<freq>,<ms>" note
+//                 | "Y<1-4>:<0|1>" / "Y:<0|1>" trigger polarity
 //                 | "W" PCM clip | "P" ping | "S" status | "M"/"M1"/"M2" offline song
 //   STM32 -> MC : "L<1-3>:<v>" LED report | "B<1-4>:<v>" button | "H" heartbeat | "R" ready | "OK" ping reply
 
