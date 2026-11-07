@@ -157,11 +157,13 @@ void Protocol_OnKeys(uint8_t km) {
 	if (!km) return;
 	for (uint8_t i = 0; i < KEY_NUM; i++) {
 		if (km & (1u << i)) {
-			Send_State('B', (uint8_t)(i + 1), 1);   // press event
 			if (i < 3) {
+				// B1-B3 are press events: receivers use them as pulse/toggle clocks.
+				Send_State('B', (uint8_t)(i + 1), 1);
 				Led_Toggle(i);
 				Send_State('L', (uint8_t)(i + 1), Led_Get(i));
 			} else {
+				// B4 is a level: send only the new latch value, never a fake press.
 				b4State = (uint8_t)!b4State;
 				Send_State('B', 4, b4State);
 			}
