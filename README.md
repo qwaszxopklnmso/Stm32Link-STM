@@ -33,6 +33,9 @@ Default buzzer trigger polarity is **V1–V3 high (NPN electromagnetic)** and
 including the 16 Ω electromagnetic buzzers, S8050 driver and 1N4007 flyback
 diode.
 
+Button roles: **B1** = red LED local toggle; **B2** = pulse receiver;
+**B3** = toggle receiver; **B4** = level receiver.
+
 ## Related repositories
 
 - **Minecraft mod**:

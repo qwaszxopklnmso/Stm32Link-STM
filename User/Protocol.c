@@ -156,18 +156,22 @@ void Protocol_Poll(void) {
 void Protocol_OnKeys(uint8_t km) {
 	if (!km) return;
 	for (uint8_t i = 0; i < KEY_NUM; i++) {
-		if (km & (1u << i)) {
-			if (i < 3) {
-				// B1-B3 are press events: receivers use them as pulse/toggle clocks.
-				Send_State('B', (uint8_t)(i + 1), 1);
-				Led_Toggle(i);
-				Send_State('L', (uint8_t)(i + 1), Led_Get(i));
-			} else {
-				// B4 is a level: send only the new latch value, never a fake press.
-				b4State = (uint8_t)!b4State;
-				Send_State('B', 4, b4State);
-			}
-			OLED_ShowLeds();
+		if (!(km & (1u << i))) continue;
+		if (i == 0) {
+			// B1: LED1 only. No B event; one button, one job.
+			Led_Toggle(0);
+			Send_State('L', 1, Led_Get(0));
+		} else if (i == 1) {
+			// B2: pulse receivers only.
+			Send_State('B', 2, 1);
+		} else if (i == 2) {
+			// B3: toggle receivers only.
+			Send_State('B', 3, 1);
+		} else {
+			// B4: level receivers. Latch value, not a fake press.
+			b4State = (uint8_t)!b4State;
+			Send_State('B', 4, b4State);
 		}
+		OLED_ShowLeds();
 	}
 }
