@@ -33,9 +33,10 @@ Default buzzer trigger polarity is **V1–V3 high (NPN electromagnetic)** and
 including the 16 Ω electromagnetic buzzers, S8050 driver and 1N4007 flyback
 diode.
 
-Button roles: **B1** = spare; **B2** = pulse receiver; **B3** = toggle
-receiver; **B4** = level receiver (hold = on, release = off). LED1–LED3 are
-output-only: the firmware sends no L report back to MC.
+Button roles: **B1** = reset every receiver output (panic clear);
+**B2** = pulse receiver; **B3** = toggle receiver; **B4** = level receiver
+(hold = on, release = off). LED1–LED3 are output-only: the firmware sends no
+L report back to MC.
 
 ## Related repositories
 

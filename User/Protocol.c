@@ -158,7 +158,10 @@ void Protocol_OnKeys(uint8_t km) {
 	if (!km) return;
 	for (uint8_t i = 0; i < KEY_NUM; i++) {
 		if (!(km & (1u << i))) continue;
-		if (i == 1) {
+		if (i == 0) {
+			// B1: reset every receiver output; never touch the lamps.
+			Send_State('B', 1, 1);
+		} else if (i == 1) {
 			// B2: pulse receivers only.
 			Send_State('B', 2, 1);
 		} else if (i == 2) {
