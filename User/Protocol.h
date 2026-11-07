@@ -11,6 +11,7 @@
 
 void Protocol_Init(void);                // reset line state, redraw OLED state rows, send "R\n"
 void Protocol_Poll(void);                // drain Serial RX, parse complete lines
-void Protocol_OnKeys(uint8_t keyMask);   // B1: LED1 only; B2: pulse; B3: toggle; B4: level
+void Protocol_OnKeys(uint8_t keyMask);   // B1: LED1 only; B2: pulse; B3: toggle
+void Protocol_UpdateInputs(uint8_t pressedMask); // B4: true level, call every loop
 
 #endif

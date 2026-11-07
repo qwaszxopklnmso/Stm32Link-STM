@@ -34,7 +34,7 @@ including the 16 Ω electromagnetic buzzers, S8050 driver and 1N4007 flyback
 diode.
 
 Button roles: **B1** = red LED local toggle; **B2** = pulse receiver;
-**B3** = toggle receiver; **B4** = level receiver.
+**B3** = toggle receiver; **B4** = level receiver (hold = on, release = off).
 
 ## Related repositories
 

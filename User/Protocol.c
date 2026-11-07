@@ -13,7 +13,7 @@
 
 static char lineBuf[LINE_BUF];
 static uint8_t lineLen = 0, lineOverflow = 0;
-static uint8_t b4State = 0;   // B4 latch: redstone broadcast switch, toggled by button
+static uint8_t b4Level = 0;   // B4 actual level: 1 while held, 0 on release
 
 static void Send_State(char tag, uint8_t num, uint8_t val) {
 	Serial_SendByte(tag);
@@ -31,7 +31,7 @@ static void OLED_ShowLeds(void) {
 	OLED_ShowString(2, 11, "L3:");
 	OLED_ShowNum(2, 14, Led_Get(2), 1);
 	OLED_ShowString(4, 1, "B4:");
-	OLED_ShowNum(4, 4, b4State, 1);
+	OLED_ShowNum(4, 4, b4Level, 1);
 	OLED_ShowString(4, 6, "T:");
 	OLED_ShowNum(4, 8, Led_TledGet(), 1);
 }
@@ -123,7 +123,7 @@ static void Line_Parse(char *s, uint8_t len) {
 		Serial_SendString("OK\n");
 	} else if (len == 1 && s[0] == 'S') {
 		for (uint8_t i = 0; i < LED_NUM; i++) Send_State('L', (uint8_t)(i + 1), Led_Get(i));
-		Send_State('B', 4, b4State);
+		Send_State('B', 4, b4Level);
 	} else if (len >= 1 && s[0] == 'M' && (len == 1 || (len == 2 && (s[1] == '1' || s[1] == '2')))) {
 		Song_Start((len == 2 && s[1] == '2') ? 2 : 1);
 	}
@@ -132,6 +132,7 @@ static void Line_Parse(char *s, uint8_t len) {
 void Protocol_Init(void) {
 	lineLen = 0;
 	lineOverflow = 0;
+	b4Level = 0;
 	OLED_ShowLeds();
 	Serial_SendString("R\n");   // ready, mod will sync on this
 }
@@ -167,11 +168,17 @@ void Protocol_OnKeys(uint8_t km) {
 		} else if (i == 2) {
 			// B3: toggle receivers only.
 			Send_State('B', 3, 1);
-		} else {
-			// B4: level receivers. Latch value, not a fake press.
-			b4State = (uint8_t)!b4State;
-			Send_State('B', 4, b4State);
 		}
 		OLED_ShowLeds();
 	}
+}
+
+// B4 is a true level, not a toggle: call this every loop with Key_GetPressedMask().
+// Holding B4 keeps the level receiver on; releasing it turns the receiver off.
+void Protocol_UpdateInputs(uint8_t pressedMask) {
+	uint8_t level = (pressedMask & KEYB_4) ? 1 : 0;
+	if (level == b4Level) return;
+	b4Level = level;
+	Send_State('B', 4, b4Level);
+	OLED_ShowLeds();
 }

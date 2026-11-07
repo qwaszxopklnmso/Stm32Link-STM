@@ -34,6 +34,7 @@ int main(void) {
 	while (1) {
 		Protocol_Poll();
 		Protocol_OnKeys(Key_Scan());
+		Protocol_UpdateInputs(Key_GetPressedMask());
 		Buzz_Update();
 		Song_Update();
 
