@@ -196,9 +196,22 @@ uint8_t Buzz_GetTriggerLow(uint8_t voice) {
 	return (voice < BUZZ_VOICES) ? trigLow[voice] : 1;
 }
 
-// Runtime volume from the MC RECORDS slider. 100 keeps the normal 50% duty;
-// 0 silences all voices. Current hardware-PWM notes are retuned immediately,
-// the software V4 voice picks it up on the next TIM4 tick.
+// Perceptual volume curve. A 2kHz resonant electromagnetic buzzer is very
+// non-linear: 5% duty already sounds almost full, so a linear duty made
+// 10..100% indistinguishable. x^4 spreads the useful range out:
+//   10% -> 1 count (barely audible), 50% -> ~3%, 70% -> ~12%, 100% -> 50%.
+// Volume 0 is a hard mute. The 1-count floor keeps 1..30% audible.
+static uint32_t VolumeDuty(uint32_t arr) {
+	if (volumePercent == 0) return 0;
+	uint64_t p = (uint64_t)volumePercent * volumePercent
+		* volumePercent * volumePercent;               // v^4, max 1e8
+	uint32_t duty = (uint32_t)((p * 50ULL * arr) / 10000000000ULL);
+	return duty ? duty : 1;                             // at least one count
+}
+
+// Runtime volume from the MC RECORDS slider. 100 = normal 50% duty; 0 = mute.
+// Current hardware-PWM notes are retuned immediately, the software V4 voice
+// picks it up on the next TIM4 tick.
 void Buzz_SetVolume(uint8_t percent) {
 	if (percent > 100) percent = 100;
 	volumePercent = percent;
@@ -209,8 +222,7 @@ void Buzz_SetVolume(uint8_t percent) {
 	for (uint8_t v = 0; v < 3; v++) {
 		if (!hwPlaying[v]) continue;
 		uint32_t arr = Buzz_Tim(v)->ARR;
-		uint32_t duty = (uint32_t)arr * BUZZ_DUTY_PERCENT * volumePercent / 10000u;
-		TIM_SetCompare1(Buzz_Tim(v), (uint16_t)duty);
+		TIM_SetCompare1(Buzz_Tim(v), (uint16_t)VolumeDuty(arr));
 	}
 }
 
@@ -241,8 +253,7 @@ void Buzz_Note(uint8_t voice, uint16_t freq, uint16_t ms) {
 	TIM_TypeDef *tim = Buzz_Tim(voice);
 	uint32_t arr = 1000000u / freq - 1u;
 	TIM_SetAutoreload(tim, (uint16_t)arr);
-	uint32_t duty = (uint32_t)arr * BUZZ_DUTY_PERCENT * volumePercent / 10000u;
-	TIM_SetCompare1(tim, (uint16_t)duty);
+	TIM_SetCompare1(tim, (uint16_t)VolumeDuty(arr));
 	TIM_GenerateEvent(tim, TIM_EventSource_Update);
 	hwEnd[voice] = Tick_GetMs() + ms;
 	hwPlaying[voice] = 1;
@@ -291,7 +302,10 @@ void TIM4_IRQHandler(void) {
 			swAcc += swInc;
 			// 50% duty at volume 100, proportionally narrower above the
 			// inactive level at lower volume. Threshold is half a period * volume.
-			uint32_t threshold = (uint32_t)((uint64_t)volumePercent * 2147483648ULL / 100u);
+			uint64_t p = (uint64_t)volumePercent * volumePercent
+				* volumePercent * volumePercent;
+			uint32_t threshold = (uint32_t)((p * 2147483648ULL) / 100000000ULL);
+			if (volumePercent && !threshold) threshold = 1;
 			uint8_t level = (swAcc < threshold) ? 1 : 0;
 			if (level != swLevel) {
 				swLevel = level;
