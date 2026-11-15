@@ -58,4 +58,9 @@ void Buzz_Beep(void);                                        // piezo confirmati
 void Buzz_SetTriggerLow(uint8_t voice, uint8_t low);   // 1 = low trigger, 0 = high
 uint8_t Buzz_GetTriggerLow(uint8_t voice);
 
+// Runtime volume: 0 = silence, 100 = BUZZ_DUTY_PERCENT (default 50% duty).
+// Sent by the mod from the Minecraft RECORDS (唱片机/音符盒) volume slider.
+void Buzz_SetVolume(uint8_t percent);
+uint8_t Buzz_GetVolume(void);
+
 #endif

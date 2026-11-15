@@ -119,6 +119,16 @@ static void Line_Parse(char *s, uint8_t len) {
 		for (uint8_t i = 0; i < BUZZ_VOICES; i++) Buzz_SetTriggerLow(i, low);
 		Serial_SendByte('Y'); Serial_SendByte(':');
 		Serial_SendNumber(low); Serial_SendByte('\n');
+	} else if (len >= 3 && s[0] == 'V' && s[1] == ':') {
+		// V:<0-100>  global buzzer volume; follows MC's RECORDS slider.
+		const char *p = s + 2;
+		uint16_t vol = 0;
+		if (Parse_U16(&p, 100, &vol) && *p == '\0') {
+			Buzz_SetVolume((uint8_t)vol);
+			Send_State('V', 0, (uint8_t)vol);
+		} else {
+			Serial_SendString("ERR\n");
+		}
 	} else if (len == 1 && s[0] == 'P') {
 		Serial_SendString("OK\n");
 	} else if (len == 1 && s[0] == 'S') {

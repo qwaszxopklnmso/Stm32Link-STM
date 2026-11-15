@@ -28,6 +28,10 @@ static uint8_t trigLow[BUZZ_VOICES] = {
 	BUZZ_TRIG_LOW_V1, BUZZ_TRIG_LOW_V2, BUZZ_TRIG_LOW_V3, BUZZ_TRIG_LOW_V4
 };
 
+// 0 = silent, 100 = BUZZ_DUTY_PERCENT (50% by default). Written on the main
+// loop, read by the TIM4 ISR; a single byte is atomic on Cortex-M3.
+static volatile uint8_t volumePercent = 100;
+
 // voice 4 software square
 static volatile uint32_t swInc = 0;        // phase increment per 16kHz tick
 static volatile uint32_t swAcc = 0;
@@ -192,12 +196,34 @@ uint8_t Buzz_GetTriggerLow(uint8_t voice) {
 	return (voice < BUZZ_VOICES) ? trigLow[voice] : 1;
 }
 
+// Runtime volume from the MC RECORDS slider. 100 keeps the normal 50% duty;
+// 0 silences all voices. Current hardware-PWM notes are retuned immediately,
+// the software V4 voice picks it up on the next TIM4 tick.
+void Buzz_SetVolume(uint8_t percent) {
+	if (percent > 100) percent = 100;
+	volumePercent = percent;
+	if (percent == 0) {
+		for (uint8_t v = 0; v < BUZZ_VOICES; v++) Buzz_Off(v);
+		return;
+	}
+	for (uint8_t v = 0; v < 3; v++) {
+		if (!hwPlaying[v]) continue;
+		uint32_t arr = Buzz_Tim(v)->ARR;
+		uint32_t duty = (uint32_t)arr * BUZZ_DUTY_PERCENT * volumePercent / 10000u;
+		TIM_SetCompare1(Buzz_Tim(v), (uint16_t)duty);
+	}
+}
+
+uint8_t Buzz_GetVolume(void) {
+	return volumePercent;
+}
+
 // freq == 0 -> silence this voice
 void Buzz_Note(uint8_t voice, uint16_t freq, uint16_t ms) {
 	if (voice >= BUZZ_VOICES) return;
 	if (pcmActive && (voice == 0 || voice >= 3)) return;  // PCM owns TIM2 / suspends V4
 
-	if (freq == 0 || ms == 0) {
+	if (freq == 0 || ms == 0 || volumePercent == 0) {
 		Buzz_Off(voice);
 		return;
 	}
@@ -215,7 +241,8 @@ void Buzz_Note(uint8_t voice, uint16_t freq, uint16_t ms) {
 	TIM_TypeDef *tim = Buzz_Tim(voice);
 	uint32_t arr = 1000000u / freq - 1u;
 	TIM_SetAutoreload(tim, (uint16_t)arr);
-	TIM_SetCompare1(tim, (uint16_t)(arr * BUZZ_DUTY_PERCENT / 100u));
+	uint32_t duty = (uint32_t)arr * BUZZ_DUTY_PERCENT * volumePercent / 10000u;
+	TIM_SetCompare1(tim, (uint16_t)duty);
 	TIM_GenerateEvent(tim, TIM_EventSource_Update);
 	hwEnd[voice] = Tick_GetMs() + ms;
 	hwPlaying[voice] = 1;
@@ -261,11 +288,14 @@ void TIM4_IRQHandler(void) {
 			return;                               // voice 4 suspended during PCM
 		}
 		if (swRemaining) {
-			uint32_t prev = swAcc;
 			swAcc += swInc;
-			if ((swAcc ^ prev) & 0x80000000u) {        // phase MSB flipped -> half period
-				swLevel = (uint8_t)!swLevel;
-				Buzz_Pin4(swLevel);
+			// 50% duty at volume 100, proportionally narrower above the
+			// inactive level at lower volume. Threshold is half a period * volume.
+			uint32_t threshold = (uint32_t)((uint64_t)volumePercent * 2147483648ULL / 100u);
+			uint8_t level = (swAcc < threshold) ? 1 : 0;
+			if (level != swLevel) {
+				swLevel = level;
+				Buzz_Pin4(level);
 			}
 			swRemaining--;
 			if (!swRemaining) Buzz_Pin4(0);            // end of note: idle level
